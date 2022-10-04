@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Environment
 import androidx.annotation.ColorInt
 import com.elvishew.xlog.XLog
+import com.github.michaelbull.result.onSuccess
 import com.jakewharton.rxrelay.BehaviorRelay
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.cache.CoverCache
@@ -15,6 +16,7 @@ import eu.kanade.tachiyomi.data.database.models.History
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.database.models.MangaImpl
 import eu.kanade.tachiyomi.data.database.models.isLongStrip
+import eu.kanade.tachiyomi.data.database.models.uuid
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
@@ -47,11 +49,15 @@ import eu.kanade.tachiyomi.util.system.ImageUtil
 import eu.kanade.tachiyomi.util.system.launchIO
 import eu.kanade.tachiyomi.util.system.launchUI
 import eu.kanade.tachiyomi.util.system.withUIContext
+import java.io.File
+import java.util.Date
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.nekomanga.domain.chapter.ChapterItem as DomainChapterItem
 import org.nekomanga.domain.chapter.toSimpleChapter
 import rx.Completable
 import rx.Observable
@@ -61,10 +67,6 @@ import rx.schedulers.Schedulers
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
-import java.io.File
-import java.util.Date
-import java.util.concurrent.TimeUnit
-import org.nekomanga.domain.chapter.ChapterItem as DomainChapterItem
 
 /**
  * Presenter used by the activity to perform background operations.
@@ -348,26 +350,29 @@ class ReaderPresenter(
                 title = ""
             }
             )
-        val (networkManga, chapters) = mangaDex.fetchMangaAndChapterDetails(tempManga)
+        mangaDex.fetchMangaAndChapterDetails(tempManga, false).onSuccess {
+            val networkManga = it.sManga!!
+            val chapters = it.sChapters
 
-        tempManga.copyFrom(networkManga)
-        tempManga.title = networkManga.title
+            tempManga.copyFrom(networkManga)
+            tempManga.title = networkManga.title
 
-        db.insertManga(tempManga).executeAsBlocking()
-        val manga = db.getMangadexManga(tempManga.url).executeAsBlocking()!!
+            db.insertManga(tempManga).executeAsBlocking()
+            val manga = db.getMangadexManga(tempManga.url).executeAsBlocking()!!
 
-        XLog.d("tempManga id ${tempManga.id}")
-        XLog.d("Manga id ${manga.id}")
+            XLog.d("tempManga id ${tempManga.id}")
+            XLog.d("Manga id ${manga.id}")
 
-        if (chapters.isNotEmpty()) {
-            val (newChapters, _) = syncChaptersWithSource(db, chapters, manga)
-            val currentChapter = newChapters.find { it.url == MdUtil.chapterSuffix + urlChapterId }
-            if (currentChapter?.id != null) {
-                withContext(Dispatchers.Main) {
-                    init(manga, currentChapter.id!!)
+            if (chapters.isNotEmpty()) {
+                val (newChapters, _) = syncChaptersWithSource(db, chapters, manga)
+                val currentChapter = newChapters.find { it.url == MdUtil.chapterSuffix + urlChapterId }
+                if (currentChapter?.id != null) {
+                    withContext(Dispatchers.Main) {
+                        init(manga, currentChapter.id!!)
+                    }
+                } else {
+                    throw Exception("Chapter not found")
                 }
-            } else {
-                throw Exception("Chapter not found")
             }
         }
     }
@@ -997,9 +1002,11 @@ class ReaderPresenter(
     }
 
     private fun updateReadingStatus(readerChapter: ReaderChapter) {
+        manga ?: return
+
         if (preferences.readingSync().not() && readerChapter.chapter.isMergedChapter().not()) return
         scope.launchIO {
-            statusHandler.markChapterRead(readerChapter.chapter.mangadex_chapter_id)
+            statusHandler.marksChaptersStatus(manga!!.uuid(), listOf(readerChapter.chapter.mangadex_chapter_id))
         }
     }
 

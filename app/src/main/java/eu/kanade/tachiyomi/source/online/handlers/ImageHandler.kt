@@ -1,9 +1,10 @@
 package eu.kanade.tachiyomi.source.online.handlers
 
 import com.elvishew.xlog.XLog
-import com.skydoves.sandwich.getOrThrow
+import com.github.michaelbull.result.getOrThrow
 import com.skydoves.sandwich.onFailure
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
+import eu.kanade.tachiyomi.network.CACHE_CONTROL_NO_STORE
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.await
@@ -16,25 +17,28 @@ import eu.kanade.tachiyomi.source.online.handlers.external.MangaHotHandler
 import eu.kanade.tachiyomi.source.online.handlers.external.MangaPlusHandler
 import eu.kanade.tachiyomi.source.online.models.dto.AtHomeImageReportDto
 import eu.kanade.tachiyomi.source.online.utils.MdConstants
+import eu.kanade.tachiyomi.util.getOrResultError
 import eu.kanade.tachiyomi.util.log
 import eu.kanade.tachiyomi.util.system.launchIO
 import eu.kanade.tachiyomi.util.system.withIOContext
-import eu.kanade.tachiyomi.util.throws
-import okhttp3.Request
-import okhttp3.Response
-import uy.kohesive.injekt.injectLazy
 import java.util.Date
 import kotlin.collections.set
 import kotlin.time.Duration.Companion.seconds
+import okhttp3.Headers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.nekomanga.domain.network.message
+import uy.kohesive.injekt.injectLazy
 
 class ImageHandler {
     val network: NetworkHelper by injectLazy()
     val preferences: PreferencesHelper by injectLazy()
-    val azukiHandler: AzukiHandler by injectLazy()
-    val mangaHotHandler: MangaHotHandler by injectLazy()
-    val mangaPlusHandler: MangaPlusHandler by injectLazy()
-    val bilibiliHandler: BilibiliHandler by injectLazy()
-    val comikeyHandler: ComikeyHandler by injectLazy()
+    private val azukiHandler: AzukiHandler by injectLazy()
+    private val mangaHotHandler: MangaHotHandler by injectLazy()
+    private val mangaPlusHandler: MangaPlusHandler by injectLazy()
+    private val bilibiliHandler: BilibiliHandler by injectLazy()
+    private val comikeyHandler: ComikeyHandler by injectLazy()
 
     val log = XLog.tag("||ImageHandler").disableStackTrace().build()
 
@@ -44,37 +48,11 @@ class ImageHandler {
     suspend fun getImage(page: Page, isLogged: Boolean): Response {
         return withIOContext {
             return@withIOContext when {
-                page.imageUrl!!.contains("mangaplus", true) -> {
-                    mangaPlusHandler.client.newCall(
-                        GET(
-                            page.imageUrl!!,
-                            mangaPlusHandler.headers,
-                        ),
-                    )
-                        .await()
-                }
-                page.imageUrl!!.contains("comikey", true) -> {
-                    comikeyHandler.client.newCall(GET(page.imageUrl!!, comikeyHandler.headers))
-                        .await()
-                }
-                page.imageUrl!!.contains("azuki", true) -> {
-                    azukiHandler.client.newCall(GET(page.imageUrl!!, comikeyHandler.headers))
-                        .await()
-                }
-                page.imageUrl!!.contains("mangahot", true) -> {
-                    mangaHotHandler.client.newCall(GET(page.imageUrl!!, comikeyHandler.headers))
-                        .await()
-                }
-                page.imageUrl!!.contains("/bfs/comic/", true)
-                -> {
-                    bilibiliHandler.client.newCall(
-                        GET(
-                            page.imageUrl!!,
-                            bilibiliHandler.headers,
-                        ),
-                    )
-                        .await()
-                }
+                isExternal(page, "mangaplus") -> getImageResponse(mangaPlusHandler.client, mangaPlusHandler.headers, page)
+                isExternal(page, "comikey") -> getImageResponse(comikeyHandler.client, comikeyHandler.headers, page)
+                isExternal(page, "azuki") -> getImageResponse(azukiHandler.client, azukiHandler.headers, page)
+                isExternal(page, "mangahot") -> getImageResponse(mangaHotHandler.client, mangaHotHandler.headers, page)
+                isExternal(page, "/bfs/comic/") -> getImageResponse(bilibiliHandler.client, bilibiliHandler.headers, page)
 
                 else -> {
                     val request = imageRequest(page, isLogged)
@@ -100,7 +78,7 @@ class ImageHandler {
         }
     }
 
-    fun reportFailedImage(url: String) {
+    private fun reportFailedImage(url: String) {
         val atHomeImageReportDto = AtHomeImageReportDto(
             url,
             false,
@@ -124,7 +102,7 @@ class ImageHandler {
         sendReport(atHomeImageReportDto)
     }
 
-    fun sendReport(atHomeImageReportDto: AtHomeImageReportDto) {
+    private fun sendReport(atHomeImageReportDto: AtHomeImageReportDto) {
         launchIO {
             log.d("Image to report $atHomeImageReportDto")
 
@@ -147,20 +125,35 @@ class ImageHandler {
                 false -> {
                     log.d("Time has expired get new at home url isLogged $isLogged")
                     updateTokenTracker(page.mangaDexChapterId, currentTime)
-                    val atHomeResponse = network.service.getAtHomeServer(
+
+                    network.cdnService.getAtHomeServer(
                         page.mangaDexChapterId,
                         preferences.usePort443Only(),
                     )
-                    atHomeResponse.onFailure {
-                        this.log(" getting image")
-                        this.throws("getting image")
-                    }.getOrThrow()
+                        .getOrResultError("getting image")
+                        .getOrThrow { Exception(it.message()) }
                         .baseUrl
                 }
             }
         log.d("Image server is $mdAtHomeServerUrl")
         log.d("page url is ${page.imageUrl}")
-        return GET(mdAtHomeServerUrl + page.imageUrl, network.headers)
+        return buildRequest(mdAtHomeServerUrl + page.imageUrl, network.headers)
+    }
+
+    // images will be cached or saved manually, so don't take up network cache
+    private fun buildRequest(url: String, headers: Headers): Request {
+        return GET(url, headers)
+            .newBuilder()
+            .cacheControl(CACHE_CONTROL_NO_STORE)
+            .build()
+    }
+
+    private suspend fun getImageResponse(client: OkHttpClient, headers: Headers, page: Page): Response {
+        return client.newCallWithProgress(buildRequest(page.imageUrl!!, headers), page).await()
+    }
+
+    private fun isExternal(page: Page, scanlatorName: String): Boolean {
+        return page.imageUrl?.contains(scanlatorName, true) ?: false
     }
 
     fun updateTokenTracker(chapterId: String, time: Long) {

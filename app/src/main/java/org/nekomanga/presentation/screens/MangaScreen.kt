@@ -64,6 +64,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaConstants.MergeActions
 import eu.kanade.tachiyomi.ui.manga.MangaConstants.TrackActions
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.openInWebView
+import java.text.DateFormat
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
@@ -82,7 +83,6 @@ import org.nekomanga.presentation.screens.mangadetails.DetailsBottomSheetScreen
 import org.nekomanga.presentation.screens.mangadetails.MangaDetailsHeader
 import org.nekomanga.presentation.screens.mangadetails.OverflowOptions
 import org.nekomanga.presentation.theme.Shapes
-import java.text.DateFormat
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -110,7 +110,6 @@ fun MangaScreen(
     chapterActions: ChapterActions,
     onBackPressed: () -> Unit,
 ) {
-
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(initialValue = ModalBottomSheetValue.Hidden, skipHalfExpanded = true)
 
@@ -124,7 +123,6 @@ fun MangaScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-
     LaunchedEffect(snackbarHostState.currentSnackbarData) {
         snackbar.collect { state ->
             scope.launch {
@@ -132,6 +130,7 @@ fun MangaScreen(
                 val result = snackbarHostState.showSnackbar(
                     message = state.getFormattedMessage(context),
                     actionLabel = state.getFormattedActionLabel(context),
+                    duration = state.snackbarDuration,
                     withDismissAction = true,
                 )
                 when (result) {
@@ -167,7 +166,7 @@ fun MangaScreen(
         )
     }
 
-    //set the current sheet to null when bottom sheet is closed
+    // set the current sheet to null when bottom sheet is closed
     if (sheetState.isVisible.not()) {
         currentBottomSheet = null
     }
@@ -203,7 +202,6 @@ fun MangaScreen(
             }
         },
     ) {
-
         NekoScaffold(
             title = "",
             themeColorState = themeColorState,
@@ -225,10 +223,9 @@ fun MangaScreen(
                         backgroundColor = themeColorState.buttonColor,
                         contentColor = MaterialTheme.colorScheme.surface,
 
-                        )
+                    )
                 },
             ) {
-
                 val mangaDetailContentPadding =
                     PaddingValues(
                         bottom = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
@@ -347,9 +344,9 @@ fun MangaScreen(
                             }
                             chapterActions.mark(chaptersToMark, action)
                         },
+                        blockScanlator = { scanlator -> chapterActions.blockScanlator(scanlator) },
                     )
                 }
-
 
                 CompositionLocalProvider(LocalRippleTheme provides themeColorState.rippleTheme, LocalTextSelectionColors provides themeColorState.textSelectionColors) {
                     if (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded) {
@@ -378,7 +375,6 @@ fun MangaScreen(
                             onConfirm = {
                                 chapterActions.delete(generalState.value.removedChapters)
                                 chapterActions.clearRemoved
-
                             },
                             onDismiss = chapterActions.clearRemoved,
                         )
@@ -453,7 +449,6 @@ private fun ExpandedLayout(
 }
 
 private fun getButtonThemeColor(buttonColor: Color, isNightMode: Boolean): Color {
-
     val color1 = buttonColor.toArgb()
     val luminance = ColorUtils.calculateLuminance(color1).toFloat()
 
@@ -489,4 +484,3 @@ fun defaultThemeColorState(): ThemeColorState {
         altContainerColor = Color(ColorUtils.blendARGB(MaterialTheme.colorScheme.secondary.toArgb(), MaterialTheme.colorScheme.surface.toArgb(), .706f)),
     )
 }
-

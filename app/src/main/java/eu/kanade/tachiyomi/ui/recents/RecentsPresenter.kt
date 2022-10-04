@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.database.models.History
 import eu.kanade.tachiyomi.data.database.models.HistoryImpl
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.database.models.MangaChapterHistory
+import eu.kanade.tachiyomi.data.database.models.uuid
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadService
 import eu.kanade.tachiyomi.data.download.DownloadServiceListener
@@ -26,6 +27,11 @@ import eu.kanade.tachiyomi.util.system.launchIO
 import eu.kanade.tachiyomi.util.system.launchUI
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.withUIContext
+import java.util.Calendar
+import java.util.Date
+import java.util.TreeMap
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.drop
@@ -36,11 +42,6 @@ import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
-import java.util.Calendar
-import java.util.Date
-import java.util.TreeMap
-import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 class RecentsPresenter(
     val preferences: PreferencesHelper = Injekt.get(),
@@ -220,7 +221,9 @@ class RecentsPresenter(
                 } else {
                     recentItems.none { mch.chapter.id == it.mch.chapter.id }
                 }
-            } else true
+            } else {
+                true
+            }
         }
         val pairs = mangaList.mapNotNull {
             val chapter = when {
@@ -242,9 +245,14 @@ class RecentsPresenter(
             }
             if (chapter == null) if ((query.isNotEmpty() || viewType > VIEW_TYPE_UNGROUP_ALL) &&
                 it.chapter.id != null
-            ) Pair(it, it.chapter)
-            else null
-            else Pair(it, chapter)
+            ) {
+                Pair(it, it.chapter)
+            } else {
+                null
+            }
+            else {
+                Pair(it, chapter)
+            }
         }
         val newItems = if (query.isEmpty() && !isUngrouped) {
             val nChaptersItems =
@@ -302,7 +310,9 @@ class RecentsPresenter(
                             if (preferences.sortFetchedTime().get()) item.date_fetch else item.date_upload
                         }
                 }
-            } else pairs.map { RecentMangaItem(it.first, it.second, null) }
+            } else {
+                pairs.map { RecentMangaItem(it.first, it.second, null) }
+            }
         }
         if (customViewType == null) {
             recentItems = if (isOnFirstPage || !updatePageCount) {
@@ -467,6 +477,7 @@ class RecentsPresenter(
      * @param read whether to mark chapters as read or unread.
      */
     fun markChapterRead(
+        manga: Manga,
         chapter: Chapter,
         read: Boolean,
         lastRead: Int? = null,
@@ -481,10 +492,7 @@ class RecentsPresenter(
                 }
             }
             if (preferences.readingSync() && chapter.isMergedChapter().not()) {
-                when (read) {
-                    true -> statusHandler.markChapterRead(chapter.mangadex_chapter_id)
-                    false -> statusHandler.markChapterUnRead(chapter.mangadex_chapter_id)
-                }
+                statusHandler.marksChaptersStatus(manga.uuid(), listOf(chapter.mangadex_chapter_id), read)
             }
             db.updateChaptersProgress(listOf(chapter)).executeAsBlocking()
             getRecents()

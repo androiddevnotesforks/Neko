@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.source.online.handlers
 
 import com.elvishew.xlog.XLog
-import com.skydoves.sandwich.ApiResponse
+import com.github.michaelbull.result.getOrThrow
 import com.skydoves.sandwich.getOrThrow
 import com.skydoves.sandwich.onFailure
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
@@ -15,12 +15,13 @@ import eu.kanade.tachiyomi.source.online.handlers.external.MangaHotHandler
 import eu.kanade.tachiyomi.source.online.handlers.external.MangaPlusHandler
 import eu.kanade.tachiyomi.source.online.models.dto.AtHomeDto
 import eu.kanade.tachiyomi.source.online.utils.MdUtil
+import eu.kanade.tachiyomi.util.getOrResultError
 import eu.kanade.tachiyomi.util.log
-import eu.kanade.tachiyomi.util.throws
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.nekomanga.domain.network.message
 import uy.kohesive.injekt.injectLazy
-import java.util.Date
 
 class PageHandler {
 
@@ -49,7 +50,7 @@ class PageHandler {
                 val chapterDate = MdUtil.parseDate(chapterAttributesDto.readableAt)
                 val chapterDateNewer = chapterDate - currentDate > 0
 
-                if (externalUrl != null) {
+                if (externalUrl != null && chapterAttributesDto.pages == 0) {
                     when {
                         "azuki manga".equals(chapter.scanlator, true) -> {
                             return@withContext azukiHandler.fetchPageList(externalUrl)
@@ -64,11 +65,7 @@ class PageHandler {
                             return@withContext comikeyHandler.fetchPageList(externalUrl)
                         }*/
                         "bilibili comics".equals(chapter.scanlator, true) -> {
-                            if (chapterAttributesDto.pages > 0) {
-                                return@withContext bilibiliHandler.fetchPageList(externalUrl)
-                            } else {
-                                throw Exception("This chapter is currently unavailable on MangaDex, try reading with webview")
-                            }
+                            return@withContext bilibiliHandler.fetchPageList(externalUrl)
                         }
                         else -> throw Exception("${chapter.scanlator} not supported, try webview")
                     }
@@ -78,23 +75,11 @@ class PageHandler {
                     throw Exception("This chapter has no pages, it might not be release yet, try refreshing")
                 }
 
-                val atHomeResponse =
-                    network.service.getAtHomeServer(
-                        chapter.mangadex_chapter_id,
-                        preferences.usePort443Only(),
-                    )
-
-                when (atHomeResponse) {
-                    is ApiResponse.Success -> {
-                        XLog.d("successfully got at home host")
-                    }
-                    is ApiResponse.Failure.Error, is ApiResponse.Failure.Exception<*> -> {
-                        atHomeResponse.log("trying to get at home response")
-                        atHomeResponse.throws("error getting image")
-                    }
-                }
-
-                val atHomeDto = atHomeResponse.getOrThrow()
+                val atHomeDto = network.cdnService.getAtHomeServer(
+                    chapter.mangadex_chapter_id,
+                    preferences.usePort443Only(),
+                ).getOrResultError("trying to get at home response")
+                    .getOrThrow { Exception(it.message()) }
 
                 return@withContext pageListParse(
                     chapter.mangadex_chapter_id,

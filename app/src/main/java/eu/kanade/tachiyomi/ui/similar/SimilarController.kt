@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.similar
 
 import android.os.Bundle
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import eu.kanade.tachiyomi.ui.base.controller.BaseComposeController
@@ -30,8 +31,12 @@ class SimilarController(mangaUUID: String) : BaseComposeController<SimilarPresen
         )
     }
 
+    override fun onViewCreated(view: View) {
+        super.onViewCreated(view)
+        presenter.updateCovers()
+    }
+
     companion object {
         const val MANGA_EXTRA = "manga"
     }
 }
-

@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.core.content.getSystemService
 import androidx.palette.graphics.Palette
-import com.elvishew.xlog.XLog
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.uuid
@@ -47,26 +46,21 @@ import org.nekomanga.domain.manga.Artwork
 import org.nekomanga.presentation.screens.MangaScreen
 import uy.kohesive.injekt.injectLazy
 
-class MangaDetailController(mangaId: Long?) : BaseComposeController<MangaDetailPresenter>() {
-
-    init {
-        if (mangaId == null) {
-            XLog.e("Manga ID is NULL this shouldn't happen")
-            router.popToRoot()
-        }
-    }
+class MangaDetailController(private val mangaId: Long) : BaseComposeController<MangaDetailPresenter>(Bundle().apply { putLong(MANGA_EXTRA, mangaId) }) {
 
     constructor(bundle: Bundle) : this(bundle.getLong(MANGA_EXTRA)) {
         val notificationId = bundle.getInt("notificationId", -1)
         val context = applicationContext ?: return
-        if (notificationId > -1) NotificationReceiver.dismissNotification(
-            context,
-            notificationId,
-            bundle.getInt("groupId", 0),
-        )
+        if (notificationId > -1) {
+            NotificationReceiver.dismissNotification(
+                context,
+                notificationId,
+                bundle.getInt("groupId", 0),
+            )
+        }
     }
 
-    override val presenter = MangaDetailPresenter(mangaId!!)
+    override val presenter = MangaDetailPresenter(mangaId)
 
     private val preferences: PreferencesHelper by injectLazy()
 
@@ -116,7 +110,7 @@ class MangaDetailController(mangaId: Long?) : BaseComposeController<MangaDetailP
                 search = presenter::searchMergedManga,
                 add = presenter::addMergedManga,
             ),
-            similarClick = { router.pushController(SimilarController(presenter.manga.value.uuid()).withFadeTransaction()) },
+            similarClick = { router.pushController(SimilarController(presenter.manga.value!!.uuid()).withFadeTransaction()) },
             shareClick = this::shareManga,
             coverActions = CoverActions(
                 share = this::shareCover,
@@ -143,12 +137,13 @@ class MangaDetailController(mangaId: Long?) : BaseComposeController<MangaDetailP
                     }
                 },
                 open = { context, chapterItem -> openChapter(context, chapterItem.chapter.toDbChapter()) },
+                blockScanlator = presenter::blockScanlator,
             ),
         ) { activity?.onBackPressed() }
     }
 
     private fun openChapter(context: Context, chapter: Chapter) {
-        startActivity(ReaderActivity.newIntent(context, presenter.manga.value, chapter))
+        startActivity(ReaderActivity.newIntent(context, presenter.manga.value!!, chapter))
     }
 
     /**
@@ -205,9 +200,9 @@ class MangaDetailController(mangaId: Long?) : BaseComposeController<MangaDetailP
             withUIContext {
                 val stream = cover?.getUriCompat(context)
                 try {
-                    val manga = presenter.manga.value
+                    val manga = presenter.manga.value!!
                     var url = presenter.sourceManager.getMangadex().mangaDetailsRequest(manga).url.toString()
-                    url = "$url/" + presenter.manga.value.getSlug()
+                    url = "$url/" + manga.getSlug()
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/*"
                         putExtra(Intent.EXTRA_TEXT, url)

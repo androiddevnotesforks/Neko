@@ -29,7 +29,7 @@ fun ApiResponse.Failure.Error<*>.toResultError(errorType: String): ResultError {
             val json = Json { ignoreUnknownKeys = true }
             runCatching {
                 val error = json.decodeFromString<ErrorResponse>(errorBody)
-                "Http error code: ${this.statusCode.code}. \n'${error.errors.joinToString("\n") { it.detail }}'"
+                "Http error code: ${this.statusCode.code}. \n'${error.errors.joinToString("\n") { it.detail ?: it.title ?: "no details or titles in error" }}'"
             }.getOrElse { "Received http error code: ${this.statusCode.code}" }
         }
     }
@@ -58,7 +58,6 @@ fun <T> ApiResponse<T>.getOrResultError(errorType: String): Result<T, ResultErro
  * Maps the ApiResponse Exception to a Result Error
  */
 fun ApiResponse.Failure.Exception<*>.toResultError(errorType: String): ResultError {
-
     XLog.enableStackTrace(10).e("Exception $errorType ${this.message}", this.exception)
 
     return ResultError.Generic(errorString = "Unknown Error: '${this.message}'")

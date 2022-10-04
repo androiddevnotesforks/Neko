@@ -154,9 +154,8 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         manga: Manga,
         wasPreviouslyTracked: Boolean,
     ): List<TrackSearch> {
-
         if (!wasPreviouslyTracked && !manga.kitsu_id.isNullOrBlank()) {
-            client.newCall(eu.kanade.tachiyomi.network.GET(apiMangaUrl(manga.kitsu_id!!)))
+            authClient.newCall(eu.kanade.tachiyomi.network.GET(apiMangaUrl(manga.kitsu_id!!)))
                 .await().parseAs<JsonObject>().let {
                     val id = it["data"]!!.jsonArray[0].jsonObject["id"]!!.jsonPrimitive
                     val map =

@@ -4,8 +4,11 @@ import eu.kanade.tachiyomi.data.database.DatabaseHelper
 import eu.kanade.tachiyomi.data.database.models.Category
 import eu.kanade.tachiyomi.data.database.models.MangaCategory
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
+import eu.kanade.tachiyomi.source.online.utils.MdConstants
 import eu.kanade.tachiyomi.ui.base.presenter.BaseCoroutinePresenter
+import eu.kanade.tachiyomi.util.system.executeOnIO
 import eu.kanade.tachiyomi.util.system.launchIO
+import java.util.Date
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
@@ -20,7 +23,6 @@ import org.nekomanga.domain.category.toCategoryItem
 import org.nekomanga.domain.category.toDbCategory
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.Date
 
 /**
  * Presenter of [SimilarController]
@@ -57,7 +59,6 @@ class SimilarPresenter(
                     )
                 }
             }
-
         }
         presenterScope.launch {
             preferences.browseAsList().asFlow().collectLatest {
@@ -75,7 +76,6 @@ class SimilarPresenter(
     private fun getSimilarManga(forceRefresh: Boolean = false) {
         presenterScope.launch {
             if (mangaUUID.isNotEmpty()) {
-
                 _similarScreenState.update {
                     it.copy(isRefreshing = true, displayManga = persistentMapOf())
                 }
@@ -103,7 +103,6 @@ class SimilarPresenter(
             updateDisplayManga(mangaId, editManga.favorite)
 
             if (editManga.favorite) {
-
                 val defaultCategory = preferences.defaultCategory()
 
                 if (categoryItems.isEmpty() && defaultCategory != -1) {
@@ -123,25 +122,25 @@ class SimilarPresenter(
 
     private fun updateDisplayManga(mangaId: Long, favorite: Boolean) {
         presenterScope.launch {
-            var mapKey = -1
-            var mangaIndex = -1
-
-            _similarScreenState.value.displayManga.onEach { entry ->
-                if (mapKey == -1) {
-                    val tempListIndex = entry.value.indexOfFirst { it.mangaId == mangaId }
-                    if (tempListIndex != -1) {
-                        mangaIndex = tempListIndex
-                        mapKey = entry.key
-                    }
+            val listOfKeyIndex = _similarScreenState.value.displayManga.mapNotNull { entry ->
+                val tempListIndex = entry.value.indexOfFirst { it.mangaId == mangaId }
+                when (tempListIndex == -1) {
+                    true -> null
+                    false -> entry.key to tempListIndex
                 }
             }
 
-            val tempList = _similarScreenState.value.displayManga[mapKey]!!.toMutableList()
-            val tempDisplayManga = tempList[mangaIndex].copy(inLibrary = favorite)
-            tempList[mangaIndex] = tempDisplayManga
             val tempMap = _similarScreenState.value.displayManga.toMutableMap()
 
-            tempMap[mapKey] = tempList.toImmutableList()
+            listOfKeyIndex.forEach { pair ->
+                val mapKey = pair.first
+                val mangaIndex = pair.second
+                val tempList = _similarScreenState.value.displayManga[mapKey]!!.toMutableList()
+                val tempDisplayManga = tempList[mangaIndex].copy(inLibrary = favorite)
+                tempList[mangaIndex] = tempDisplayManga
+
+                tempMap[mapKey] = tempList.toImmutableList()
+            }
 
             _similarScreenState.update {
                 it.copy(
@@ -166,5 +165,24 @@ class SimilarPresenter(
 
     fun switchDisplayMode() {
         preferences.browseAsList().set(!similarScreenState.value.isList)
+    }
+
+    fun updateCovers() {
+        if (isScopeInitialized) {
+            presenterScope.launch {
+                val newDisplayManga = _similarScreenState.value.displayManga.map { entry ->
+                    Pair(
+                        entry.key,
+                        entry.value.map {
+                            val dbManga = db.getManga(it.mangaId).executeOnIO()!!
+                            it.copy(currentArtwork = it.currentArtwork.copy(url = dbManga.user_cover ?: "", originalArtwork = dbManga.thumbnail_url ?: MdConstants.noCoverUrl))
+                        }.toImmutableList(),
+                    )
+                }.toMap().toImmutableMap()
+                _similarScreenState.update {
+                    it.copy(displayManga = newDisplayManga)
+                }
+            }
+        }
     }
 }

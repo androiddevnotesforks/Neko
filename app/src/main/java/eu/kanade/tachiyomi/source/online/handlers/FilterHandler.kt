@@ -6,13 +6,13 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangaTag
 import eu.kanade.tachiyomi.source.online.utils.MdConstants
 import eu.kanade.tachiyomi.source.online.utils.MdUtil
-import uy.kohesive.injekt.injectLazy
 import java.util.Locale
+import uy.kohesive.injekt.injectLazy
 
 class FilterHandler {
 
     val preferencesHelper: PreferencesHelper by injectLazy()
-    
+
     internal fun getMDFilterList(): FilterList {
         val filters = mutableListOf(
             HasAvailableChaptersFilter("Has available chapters"),
@@ -99,7 +99,7 @@ class FilterHandler {
         Filter.Select<String>("Excluded tags mode", arrayOf("And", "Or"), 1)
 
     val sortableList = listOf(
-        Pair("Latest Uploaded chapter (Any language)", ""),
+        Pair("Latest Uploaded chapter (Any language)", "latestUploadedChapter"),
         Pair("Relevance", "relevance"),
         Pair("Number of follows", "followedCount"),
         Pair("Created at", "createdAt"),
@@ -119,9 +119,7 @@ class FilterHandler {
         val statusList = mutableListOf<String>() // status[]
         val includeTagList = mutableListOf<String>() // includedTags[]
         val excludeTagList = mutableListOf<String>() // excludedTags[]
-        val hasAvailableChapterLangs = mutableListOf<String>()// availableTranslatedLanguage[]
-
-        // if (filters.fin)
+        val hasAvailableChapterLangs = mutableListOf<String>() // availableTranslatedLanguage[]
 
         // add filters
         filters.forEach { filter ->
@@ -159,7 +157,7 @@ class FilterHandler {
                         }
                 }
                 is SortFilter -> {
-                    if (filter.state != null && filter.state!!.index != 0) {
+                    if (filter.state != null) {
                         val query = sortableList[filter.state!!.index].second
                         val value = when (filter.state!!.ascending) {
                             true -> "asc"

@@ -29,7 +29,7 @@ class LatestChapterHandler {
 
     private val uniqueManga = mutableSetOf<String>()
 
-    suspend fun getPage(page: Int): Result<MangaListPage, ResultError> {
+    suspend fun getPage(page: Int, blockedScanlatorUUIDs: List<String>): Result<MangaListPage, ResultError> {
         if (page == 1) uniqueManga.clear()
         return withContext(Dispatchers.IO) {
             val limit = MdUtil.latestChapterLimit
@@ -39,9 +39,8 @@ class LatestChapterHandler {
 
             val contentRatings = preferencesHelper.contentRatingSelections().toList()
 
-            val response = service.latestChapters(limit, offset, langs, contentRatings)
-
-            return@withContext response.getOrResultError("getting latest chapters")
+            return@withContext service.latestChapters(limit, offset, langs, contentRatings, blockedScanlatorUUIDs)
+                .getOrResultError("getting latest chapters")
                 .andThen {
                     latestChapterParse(it)
                 }
@@ -70,7 +69,6 @@ class LatestChapterHandler {
                     "contentRating[]" to allContentRating,
                 )
 
-
             service.search(ProxyRetrofitQueryMap(queryParameters))
                 .getOrResultError("trying to search manga from latest chapters").andThen { mangaListDto ->
                     val hasMoreResults = chapterListDto.limit + chapterListDto.offset < chapterListDto.total
@@ -85,7 +83,6 @@ class LatestChapterHandler {
 
                     Ok(MangaListPage(sourceManga = mangaList.toImmutableList(), hasNextPage = hasMoreResults))
                 }
-
         }.getOrElse {
             XLog.e("Error parsing latest chapters", it)
             Err(ResultError.Generic(errorString = "Error parsing latest chapters response"))

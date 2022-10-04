@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import org.nekomanga.domain.category.CategoryItem
 import org.nekomanga.domain.manga.DisplayManga
+import org.nekomanga.domain.network.message
 import org.nekomanga.presentation.components.ListGridActionButton
 import org.nekomanga.presentation.components.MangaGridWithHeader
 import org.nekomanga.presentation.components.MangaListWithHeader
@@ -52,7 +54,6 @@ fun FollowsScreen(
     toggleFavorite: (Long, List<CategoryItem>) -> Unit,
     retryClick: () -> Unit,
 ) {
-
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(initialValue = ModalBottomSheetValue.Hidden, skipHalfExpanded = true)
 
@@ -66,7 +67,8 @@ fun FollowsScreen(
     }
 
     ModalBottomSheetLayout(
-        sheetState = sheetState, sheetShape = RoundedCornerShape(Shapes.sheetRadius),
+        sheetState = sheetState,
+        sheetShape = RoundedCornerShape(Shapes.sheetRadius),
         sheetContent = {
             Box(modifier = Modifier.defaultMinSize(minHeight = 1.dp)) {
                 EditCategorySheet(
@@ -84,7 +86,6 @@ fun FollowsScreen(
             }
         },
     ) {
-
         NekoScaffold(
             title = stringResource(id = R.string.follows),
             onNavigationIconClicked = onBackPress,
@@ -99,14 +100,14 @@ fun FollowsScreen(
             if (followsScreenState.value.isLoading) {
                 LoadingScreen(incomingPaddingValues)
             } else if (followsScreenState.value.error != null) {
+                val message = followsScreenState.value.error!!.message(LocalContext.current)
                 EmptyScreen(
                     icon = Icons.Default.ErrorOutline,
                     iconSize = 176.dp,
-                    message = followsScreenState.value.error,
+                    message = message,
                     actions = persistentListOf(Action(R.string.retry, retryClick)),
                 )
             } else {
-
                 val haptic = LocalHapticFeedback.current
 
                 FollowsContent(
@@ -150,7 +151,6 @@ private fun FollowsContent(
             top = paddingValues.calculateTopPadding(),
         )
 
-
         if (followsScreenState.value.isList) {
             MangaListWithHeader(
                 groupedManga = followsScreenState.value.displayManga,
@@ -160,7 +160,6 @@ private fun FollowsContent(
                 onLongClick = mangaLongClick,
             )
         } else {
-
             MangaGridWithHeader(
                 groupedManga = followsScreenState.value.displayManga,
                 shouldOutlineCover = followsScreenState.value.outlineCovers,
